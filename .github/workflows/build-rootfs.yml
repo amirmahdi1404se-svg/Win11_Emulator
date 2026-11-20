@@ -1,0 +1,40 @@
+name: Build ARM64 RootFS Package
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-rootfs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y debootstrap qemu-user-static xz-utils wget
+
+      - name: Create Ubuntu ARM64 Base RootFS
+        run: |
+          mkdir -p rootfs
+          sudo debootstrap --arch=arm64 --foreign jammy rootfs http://ports.ubuntu.com/ubuntu-ports/
+          sudo cp /usr/bin/qemu-aarch64-static rootfs/usr/bin/
+          sudo chroot rootfs /debootstrap/debootstrap --second-stage
+
+      - name: Install Wine & Box64 dependencies inside RootFS
+        run: |
+          sudo chroot rootfs /bin/bash -c "
+            apt-get update &&
+            apt-get install -y wget ca-certificates libvulkan1 mesa-vulkan-drivers libgl1 &&
+            mkdir -p /opt/wine /root/.wine &&
+            apt-get clean && rm -rf /var/lib/apt/lists/*
+          "
+          sudo rm -f rootfs/usr/bin/qemu-aarch64-static
+
+      - name: Compress RootFS
+        run: |
+          sudo tar -cJf rootfs.tar.xz -C rootfs .
+
+      - name: Upload RootFS Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: win11-rootfs-arm64
+          path: rootfs.tar.xz
